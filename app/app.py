@@ -23,6 +23,9 @@ QBITTORRENT_PORT = os.environ.get('QBITTORRENT_PORT', '8880')
 QBITTORRENT_USERNAME = os.environ.get('QBITTORRENT_USERNAME', 'admin')
 QBITTORRENT_PASSWORD = os.environ.get('QBITTORRENT_PASSWORD', 'adminadmin')
 DB_PATH = os.environ.get('DB_PATH', 'data/anime_watchlist.db')
+# Add schedule configuration options
+SCHEDULE_INTERVAL = int(os.environ.get('SCHEDULE_INTERVAL', 1))  # Default: check every 1 hour
+SCHEDULE_UNIT = os.environ.get('SCHEDULE_UNIT', 'hour')  # Options: 'minute', 'hour', 'day'
 
 # ===============================
 #  [3] Database Setup
@@ -40,7 +43,8 @@ def init_db():
             status TEXT DEFAULT 'watching',
             last_episode INTEGER DEFAULT 0,
             next_episode_date TEXT,
-            auto_download BOOLEAN DEFAULT 1
+            auto_download BOOLEAN DEFAULT 1,
+            schedule_interval INTEGER DEFAULT 0
         )
     ''')
 
@@ -362,12 +366,13 @@ def add_anime():
         last_episode = int(request.form.get('last_episode', 0))
         auto_download = 1 if 'auto_download' in request.form else 0
         download_all = 1 if 'download_all' in request.form else 0
+        schedule_interval = int(request.form.get('schedule_interval', 0))  # 0 means use global setting
 
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO anime (title, search_query, last_episode, auto_download) VALUES (?, ?, ?, ?)",
-            (title, search_query, last_episode, auto_download)
+            "INSERT INTO anime (title, search_query, last_episode, auto_download, schedule_interval) VALUES (?, ?, ?, ?, ?)",
+            (title, search_query, last_episode, auto_download, schedule_interval)
         )
         anime_id = cursor.lastrowid
         conn.commit()
@@ -423,8 +428,11 @@ def update_anime(anime_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE anime SET title = ?, search_query = ?, status = ?, auto_download = ? WHERE id = ?",
-        (data['title'], data['search_query'], data['status'], 1 if 'auto_download' in data else 0, anime_id)
+        "UPDATE anime SET title = ?, search_query = ?, status = ?, auto_download = ?, schedule_interval = ? WHERE id = ?",
+        (data['title'], data['search_query'], data['status'], 
+         1 if 'auto_download' in data else 0, 
+         int(data.get('schedule_interval', 0)), 
+         anime_id)
     )
     conn.commit()
     conn.close()
@@ -639,6 +647,11 @@ def create_templates():
             <input type="checkbox" class="form-check-input" id="download_all" name="download_all">
             <label class="form-check-label" for="download_all">Download all existing episodes now</label>
         </div>
+        <div class="mb-3">
+            <label for="schedule_interval" class="form-label">Custom Check Interval (hours)</label>
+            <input type="number" class="form-control" id="schedule_interval" name="schedule_interval" value="0" min="0">
+            <div class="form-text">Set to 0 to use global setting (default), or specify custom hours between checks for this anime</div>
+        </div>
         
         <button type="submit" class="btn btn-success">Add Anime</button>
         <a href="/" class="btn btn-secondary">Cancel</a>
@@ -683,6 +696,12 @@ def create_templates():
         <div class="mb-3 form-check">
             <input type="checkbox" class="form-check-input" id="auto_download" name="auto_download" {% if anime.auto_download %}checked{% endif %}>
             <label class="form-check-label" for="auto_download">Enable auto-download for new episodes</label>
+        </div>
+        
+        <div class="mb-3">
+            <label for="schedule_interval" class="form-label">Custom Check Interval (hours)</label>
+            <input type="number" class="form-control" id="schedule_interval" name="schedule_interval" value="{{ anime.schedule_interval }}" min="0">
+            <div class="form-text">Set to 0 to use global setting, or specify custom hours between checks for this anime</div>
         </div>
         
         <button type="submit" class="btn btn-primary">Update</button>
@@ -944,13 +963,32 @@ def check_for_new_episodes():
                 conn.commit()
     conn.close()
 
+def run_scheduler():
+    while True:
+        schedule.run_pending()
+        time.sleep(60)  # Check every minute if there are pending schedules
+
 if __name__ == '__main__':
     init_db()
     create_templates()
-    schedule.every(1).hour.do(check_for_new_episodes)
-    t = threading.Thread(target=lambda: [schedule.run_pending() or time.sleep(60)])
-    t.daemon = True
-    t.start()
+    # Setup the default global schedule
+    if SCHEDULE_UNIT == 'minute':
+        schedule.every(SCHEDULE_INTERVAL).minutes.do(check_for_new_episodes)
+    elif SCHEDULE_UNIT == 'hour':
+        schedule.every(SCHEDULE_INTERVAL).hours.do(check_for_new_episodes)
+    elif SCHEDULE_UNIT == 'day':
+        schedule.every(SCHEDULE_INTERVAL).days.do(check_for_new_episodes)
+    else:
+        schedule.every(1).hour.do(check_for_new_episodes)  # Fallback to hourly
+    
+    # Create and properly start the scheduler thread
+    scheduler_thread = threading.Thread(target=run_scheduler)
+    scheduler_thread.daemon = True
+    scheduler_thread.start()
+
+    # Run initial check at startup
+    check_for_new_episodes()
+    
     port = int(os.environ.get('FLASK_PORT', 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
 
