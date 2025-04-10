@@ -1,4 +1,4 @@
-# 🎬 Anime Watchlist Downloader
+# 🎬 Anime Watchlist Downloader (VPN+Killswitch)
 Auto-download new anime episodes from [Nyaa.si](https://nyaa.si) using search queries and track what you're watching.
 
 🚀 Built with:
