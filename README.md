@@ -11,9 +11,8 @@ Auto-download new anime episodes from [Nyaa.si](https://nyaa.si) using search qu
 ---
 
 ## 📸 Preview
-> Add a screenshot here later if you want:
-> ![screenshot](images/anime-watchlist.png)
-> ![screenshot](images/anime-dash.png)
+<img src="images/anime_watchlist.png" width="50%" height="50%">
+<img src="images/anime_dash.png" width="50%" height="50%">
 
 ---
 
