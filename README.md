@@ -34,6 +34,22 @@ You can use [TorGuard](https://torguard.net/checkmytorrentipaddress.php) to chec
 
 ![alt text](images/checkip.png)
 
+## Search-Query
+
+> Customize queries for better results. Specify Realease-Groups like [ASW],[Erai-raws],.. or video resolution like 1080p
+> For example: [Erai-raws] Saikyou no Ousama, Nidome no Jinsei wa Nani o Suru? 1080p 
+
+
+## Known Issues
+
+- WireGuard VPN no connection (Workaround restart-script)
+
+## Future Task (far far away) 
+
+- Covers
+- RLS-DB feed instead of schedule
+- Streaming-Player
+- Download-Layout improvements
 
 ### Surfshark
 
@@ -59,6 +75,7 @@ http://patreon.com/muX1337
 - [Quentin McGaw](https://github.com/qdm12) for gluetun
 - [Linuxserver](https://www.linuxserver.io/) for qBittorent Docker image
 - [Claude](https://claude.ai/) for doing the coding
+- All release Groups
 
 ### Contact
 
