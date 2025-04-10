@@ -43,6 +43,7 @@ You can use [TorGuard](https://torguard.net/checkmytorrentipaddress.php) to chec
 ## Known Issues
 
 - WireGuard VPN no connection (Workaround restart-script)
+- Invalid input at Episode counter.
 
 ## Future Task (far far away) 
 
@@ -62,6 +63,9 @@ On top of any currently running deal, your friend will get:
     1 free month — if they purchase a 1-month plan;
     3 free months — if they purchase a 12-month plan;
     3 free months — if they purchase a 24-month plan.
+
+> You can deactivate the automated renew a few month before ending and get a discount
+
 
 ### Donations
 
