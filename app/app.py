@@ -35,6 +35,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
+    # Create main tables if they don't exist
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS anime (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,11 +44,20 @@ def init_db():
             status TEXT DEFAULT 'watching',
             last_episode INTEGER DEFAULT 0,
             next_episode_date TEXT,
-            auto_download BOOLEAN DEFAULT 1,
-            schedule_interval TEXT DEFAULT 'global'
+            auto_download BOOLEAN DEFAULT 1
         )
     ''')
     
+    # Check if schedule_interval column exists, add it if not
+    cursor.execute("PRAGMA table_info(anime)")
+    columns = cursor.fetchall()
+    column_names = [col[1] for col in columns]
+    
+    if 'schedule_interval' not in column_names:
+        print("Adding schedule_interval column to anime table")
+        cursor.execute('ALTER TABLE anime ADD COLUMN schedule_interval TEXT DEFAULT "global"')
+    
+    # Create other tables
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS downloads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +86,6 @@ def init_db():
 
     conn.commit()
     conn.close()
-
 
 # ===============================
 #  [4] Magnet Fetching & Torrent Add
@@ -113,7 +122,9 @@ def fetch_magnet_links(search_query, page=1):
                 r'(?:^|\s)#(\d{1,4})(?:\s|$|\.|_)',
                 r'(?:^|\s)- (\d{1,4})(?:\s|$|\.|_)',
                 r'(?:^|\s)\[(\d{1,4})\](?:\s|$|\.|_)',
-                r'(?:^|\s)(\d{1,4})(?:\s|$|\.|_)'
+                r'(?:^|\s)(\d{1,4})(?:\s|$|\.|_)',
+                r'S\d+E(\d+)',
+                r'(?:^|\s)E(\d+)(?:\s|$|\.|_)',
             ]
             for pattern in ep_patterns:
                 match = re.search(pattern, title_for_search)
