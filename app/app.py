@@ -44,10 +44,10 @@ def init_db():
             last_episode INTEGER DEFAULT 0,
             next_episode_date TEXT,
             auto_download BOOLEAN DEFAULT 1,
-            schedule_interval INTEGER DEFAULT 0
+            schedule_interval TEXT DEFAULT 'global'
         )
     ''')
-
+    
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS downloads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -316,7 +316,7 @@ def check_new_episodes_with_progress(anime_id, search_query, start_episode, task
             if ep <= start_episode or ep in processed_episodes or ep == -1:
                 continue
                 
-            processed_episodes.add(ep)
+            processed_episodes.add(ep)  # Mark this episode as processed
             if ep > latest_episode:
                 latest_episode = ep
                 
@@ -363,11 +363,16 @@ def add_anime():
     if request.method == 'POST':
         title = request.form['title']
         search_query = request.form['search_query']
-        last_episode = int(request.form.get('last_episode', 0))
+        try:
+            last_episode = max(0, int(request.form.get('last_episode', 0)))
+        except ValueError:
+            last_episode = 0  # Default to 0 if invalid input
         auto_download = 1 if 'auto_download' in request.form else 0
         download_all = 1 if 'download_all' in request.form else 0
-        schedule_interval = int(request.form.get('schedule_interval', 0))  # 0 means use global setting
-
+        
+        # Get schedule interval from dropdown
+        schedule_interval = request.form.get('schedule_interval', 'global')
+        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
@@ -425,13 +430,20 @@ def edit_anime(anime_id):
 @app.route('/update/<int:anime_id>', methods=['POST'])
 def update_anime(anime_id):
     data = request.form
+    
+    try:
+        last_episode = max(0, int(data.get('last_episode', 0)))
+    except ValueError:
+        last_episode = 0  # Default to 0 if invalid input
+        
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE anime SET title = ?, search_query = ?, status = ?, auto_download = ?, schedule_interval = ? WHERE id = ?",
+        "UPDATE anime SET title = ?, search_query = ?, status = ?, last_episode = ?, auto_download = ?, schedule_interval = ? WHERE id = ?",
         (data['title'], data['search_query'], data['status'], 
+         last_episode,
          1 if 'auto_download' in data else 0, 
-         int(data.get('schedule_interval', 0)), 
+         data.get('schedule_interval', 'global'), 
          anime_id)
     )
     conn.commit()
@@ -614,7 +626,7 @@ def create_templates():
     {% endif %}
 {% endblock %}''')
  
-    # Create add_anime template 
+     # Create add_anime template with dropdown for schedule
     with open('templates/add_anime.html', 'w') as f:
         f.write('''{% extends "base.html" %}
 {% block content %}
@@ -647,10 +659,19 @@ def create_templates():
             <input type="checkbox" class="form-check-input" id="download_all" name="download_all">
             <label class="form-check-label" for="download_all">Download all existing episodes now</label>
         </div>
+        
         <div class="mb-3">
-            <label for="schedule_interval" class="form-label">Custom Check Interval (hours)</label>
-            <input type="number" class="form-control" id="schedule_interval" name="schedule_interval" value="0" min="0">
-            <div class="form-text">Set to 0 to use global setting (default), or specify custom hours between checks for this anime</div>
+            <label for="schedule_interval" class="form-label">Check Interval</label>
+            <select class="form-select" id="schedule_interval" name="schedule_interval">
+                <option value="global">Global Setting (Default)</option>
+                <option value="15min">Every 15 minutes</option>
+                <option value="30min">Every 30 minutes</option>
+                <option value="45min">Every 45 minutes</option>
+                <option value="1h">Every 1 hour</option>
+                <option value="2h">Every 2 hours</option>
+                <option value="5h">Every 5 hours</option>
+            </select>
+            <div class="form-text">How often to check for new episodes</div>
         </div>
         
         <button type="submit" class="btn btn-success">Add Anime</button>
@@ -659,7 +680,7 @@ def create_templates():
 {% endblock %}''')
     
     
-    # Create edit_anime template
+    # Update edit_anime template with dropdown for schedule
     with open('templates/edit_anime.html', 'w') as f:
         f.write('''{% extends "base.html" %}
 {% block content %}
@@ -699,9 +720,17 @@ def create_templates():
         </div>
         
         <div class="mb-3">
-            <label for="schedule_interval" class="form-label">Custom Check Interval (hours)</label>
-            <input type="number" class="form-control" id="schedule_interval" name="schedule_interval" value="{{ anime.schedule_interval }}" min="0">
-            <div class="form-text">Set to 0 to use global setting, or specify custom hours between checks for this anime</div>
+            <label for="schedule_interval" class="form-label">Check Interval</label>
+            <select class="form-select" id="schedule_interval" name="schedule_interval">
+                <option value="global" {% if anime.schedule_interval == 'global' %}selected{% endif %}>Global Setting (Default)</option>
+                <option value="15min" {% if anime.schedule_interval == '15min' %}selected{% endif %}>Every 15 minutes</option>
+                <option value="30min" {% if anime.schedule_interval == '30min' %}selected{% endif %}>Every 30 minutes</option>
+                <option value="45min" {% if anime.schedule_interval == '45min' %}selected{% endif %}>Every 45 minutes</option>
+                <option value="1h" {% if anime.schedule_interval == '1h' %}selected{% endif %}>Every 1 hour</option>
+                <option value="2h" {% if anime.schedule_interval == '2h' %}selected{% endif %}>Every 2 hours</option>
+                <option value="5h" {% if anime.schedule_interval == '5h' %}selected{% endif %}>Every 5 hours</option>
+            </select>
+            <div class="form-text">How often to check for new episodes</div>
         </div>
         
         <button type="submit" class="btn btn-primary">Update</button>
@@ -949,29 +978,31 @@ def check_for_new_episodes():
     for anime in anime_list:
         print(f"[AutoCheck] {anime['title']}")
         results = fetch_magnet_links(anime['search_query'])
-        new_eps = [r for r in results if r['episode'] > anime['last_episode'] and r['episode'] != -1]
-        for r in new_eps:
-            if add_torrent_to_qbittorrent(r['magnet']):
-                cursor.execute(
-                    "INSERT INTO downloads (anime_id, episode, magnet_link, download_date) VALUES (?, ?, ?, ?)",
-                    (anime['id'], r['episode'], r['magnet'], datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                )
-                cursor.execute(
-                    "UPDATE anime SET last_episode = ? WHERE id = ? AND last_episode < ?",
-                    (r['episode'], anime['id'], r['episode'])
-                )
-                conn.commit()
+        # Sort results by episode number to ensure we process in order
+        results.sort(key=lambda x: x['episode'] if x['episode'] != -1 else 99999)
+        
+        # Track which episodes we've already processed
+        processed_episodes = set()
+        
+        for r in results:
+            if r['episode'] > anime['last_episode'] and r['episode'] != -1 and r['episode'] not in processed_episodes:
+                processed_episodes.add(r['episode'])  # Mark this episode as processed
+                
+                if add_torrent_to_qbittorrent(r['magnet']):
+                    cursor.execute(
+                        "INSERT INTO downloads (anime_id, episode, magnet_link, download_date) VALUES (?, ?, ?, ?)",
+                        (anime['id'], r['episode'], r['magnet'], datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    )
+                    cursor.execute(
+                        "UPDATE anime SET last_episode = ? WHERE id = ? AND last_episode < ?",
+                        (r['episode'], anime['id'], r['episode'])
+                    )
+                    conn.commit()
     conn.close()
+    
 
 def run_scheduler():
-    while True:
-        schedule.run_pending()
-        time.sleep(60)  # Check every minute if there are pending schedules
-
-if __name__ == '__main__':
-    init_db()
-    create_templates()
-    # Setup the default global schedule
+    # Configure scheduler based on environment settings for global checks
     if SCHEDULE_UNIT == 'minute':
         schedule.every(SCHEDULE_INTERVAL).minutes.do(check_for_new_episodes)
     elif SCHEDULE_UNIT == 'hour':
@@ -980,6 +1011,18 @@ if __name__ == '__main__':
         schedule.every(SCHEDULE_INTERVAL).days.do(check_for_new_episodes)
     else:
         schedule.every(1).hour.do(check_for_new_episodes)  # Fallback to hourly
+    
+    # Schedule the custom per-anime check
+    schedule.every(15).minutes.do(schedule_custom_check)
+    
+    while True:
+        schedule.run_pending()
+        time.sleep(60)  # Check every minute if there are pending schedules
+
+
+if __name__ == '__main__':
+    init_db()
+    create_templates()
     
     # Create and properly start the scheduler thread
     scheduler_thread = threading.Thread(target=run_scheduler)
