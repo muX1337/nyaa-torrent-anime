@@ -102,7 +102,7 @@ def fetch_magnet_links(search_query, page=1):
 
         results = []
         rows = soup.select('table.torrent-list > tbody > tr')
-
+        
         for row in rows:
             title_el = row.select_one('td:nth-child(2) a:not(.comments)')
             if not title_el:
@@ -114,32 +114,40 @@ def fetch_magnet_links(search_query, page=1):
                 continue
 
             is_movie = 'movie' in title_lower or 'film' in title_lower
-            title_for_search = re.sub(r'\[\w{8}\]', '', title_lower)
+            title_for_search = re.sub(r'\[\w{8}\]', '', title_lower)  # Remove any hashes in square brackets
+            
+            ep_patterns = [
+                r'(?i)(?:^|\s)s\s*(\d{2})\s*e\s*(\d{2})(?=\W|$)',  # Case-insensitive SXXEXX format
+                r'(?i)(?:^|\s)s?0*(\d{1,2})e0*(\d{1,3})(?=\W|$)',  # Case-insensitive SXXEXX format with leading zeros
+                r'(?:^|\s)(?:ep|episode|e)[\s\.]*(\d{1,4})',        # For ep, episode, or e followed by the episode number
+                r'(?:^|\s)- (\d{1,4})(?=\s|$|\.|_)',                  # Matches episode numbers like "- 15"
+                r'(?:^|\s)\[(\d{1,4})\](?:\s|$|\.|_)',               # Matches numbers like "[15]"
+                r'(?:^|\s)e(\d+)(?:\s|$|\.|_)',                      # Matches "e01" format
+                r'(?<!\d)(\d{1,2})(?!\d)',                            # Fallback for any two-digit number
+            ]
 
             episode = -1
-            ep_patterns = [
-                r'(?:^|\s)(?:ep|episode|e)[\s\.]*(\d{1,4})(?:\s|$|\.|_)',
-                r'(?:^|\s)#(\d{1,4})(?:\s|$|\.|_)',
-                r'(?:^|\s)- (\d{1,4})(?:\s|$|\.|_)',
-                r'(?:^|\s)\[(\d{1,4})\](?:\s|$|\.|_)',
-                r'(?:^|\s)(\d{1,4})(?:\s|$|\.|_)',
-                r'S\d+E(\d+)',
-                r'(?:^|\s)E(\d+)(?:\s|$|\.|_)',
-            ]
             for pattern in ep_patterns:
+                print(f"Trying pattern: {pattern}")
                 match = re.search(pattern, title_for_search)
+                print("title_for_search: " + title_for_search)
                 if match:
                     try:
-                        ep = int(match.group(1))
-                        if ep < 5000:
+                        # If we match SxEx, use the second group for episode number
+                        if match.lastindex == 2:
+                            ep = int(match.group(2))
+                        else:
+                            ep = int(match.group(1))
+                        if ep < 5000:  # Ensures it is a valid episode number
                             episode = ep
                             break
-                    except:
-                        pass
+                    except Exception as e:
+                        print("🚨 Exception:", e)
 
             if is_movie and episode == -1:
-                episode = 0
+                episode = 0  # If it's a movie, set episode to 0
 
+            # Find magnet link
             magnet_el = row.select_one('td:nth-child(3) a[href^="magnet:"]')
             if magnet_el:
                 results.append({
@@ -153,8 +161,8 @@ def fetch_magnet_links(search_query, page=1):
 
         return results
 
-    except Exception as e:
-        print(f"[fetch_magnet_links] Error: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching data: {e}")
         return []
 
 def add_torrent_to_qbittorrent(magnet_link):
@@ -300,60 +308,87 @@ def download_all_episodes_with_progress(anime_id, search_query, task_id):
     conn.close()
 
 def check_new_episodes_with_progress(anime_id, search_query, start_episode, task_id):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Get pagination info BEFORE starting the loop
-    pagination_info = detect_pagination(search_query)
-    total_pages = pagination_info['total_pages']
-    
-    # Update task with total pages immediately
-    cursor.execute(
-        "UPDATE tasks SET total_pages = ?, updated_at = ? WHERE id = ?",
-        (total_pages, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), task_id)
-    )
-    conn.commit()
-    
-    page = 1
-    processed_episodes = set()
-    latest_episode = start_episode
-
-    while page <= total_pages:
-        results = fetch_magnet_links(search_query, page)
-        results.sort(key=lambda x: x['episode'] if x['episode'] != -1 else 99999)
-
-        for result in results:
-            ep = result['episode']
-            if ep <= start_episode or ep in processed_episodes or ep == -1:
-                continue
-                
-            processed_episodes.add(ep)  # Mark this episode as processed
-            if ep > latest_episode:
-                latest_episode = ep
-                
-            if add_torrent_to_qbittorrent(result['magnet']):
-                cursor.execute(
-                    "INSERT INTO downloads (anime_id, episode, magnet_link, download_date) VALUES (?, ?, ?, ?)",
-                    (anime_id, ep, result['magnet'], datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                )
-                
-        progress = int((page / total_pages) * 100)
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Get pagination info BEFORE starting the loop
+        pagination_info = detect_pagination(search_query)
+        total_pages = pagination_info['total_pages']
+        
+        # Update task with total pages immediately
         cursor.execute(
-            "UPDATE tasks SET current_page = ?, progress = ?, updated_at = ? WHERE id = ?",
-            (page, progress, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), task_id)
+            "UPDATE tasks SET total_pages = ?, updated_at = ? WHERE id = ?",
+            (total_pages, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), task_id)
         )
         conn.commit()
-        page += 1
+        
+        page = 1
+        processed_episodes = set()
+        latest_episode = start_episode
 
-    if latest_episode > start_episode:
-        cursor.execute("UPDATE anime SET last_episode = ? WHERE id = ?", (latest_episode, anime_id))
+        while page <= total_pages:
+            results = fetch_magnet_links(search_query, page)
+            results.sort(key=lambda x: x['episode'] if x['episode'] != -1 else 99999)
 
-    cursor.execute(
-        "UPDATE tasks SET status = 'completed', progress = 100, updated_at = ? WHERE id = ?",
-        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), task_id)
-    )
-    conn.commit()
-    conn.close()
+            for result in results:
+                ep = result['episode']
+                if ep <= start_episode or ep in processed_episodes or ep == -1:
+                    continue
+                    
+                processed_episodes.add(ep)  # Mark this episode as processed
+                if ep > latest_episode:
+                    latest_episode = ep
+                    
+                if add_torrent_to_qbittorrent(result['magnet']):
+                    cursor.execute(
+                        "INSERT INTO downloads (anime_id, episode, magnet_link, download_date) VALUES (?, ?, ?, ?)",
+                        (anime_id, ep, result['magnet'], datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    )
+                    
+            progress = int((page / total_pages) * 100)
+            cursor.execute(
+                "UPDATE tasks SET current_page = ?, progress = ?, updated_at = ? WHERE id = ?",
+                (page, progress, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), task_id)
+            )
+            conn.commit()
+            page += 1
+
+        if latest_episode > start_episode:
+            cursor.execute("UPDATE anime SET last_episode = ? WHERE id = ?", (latest_episode, anime_id))
+
+        cursor.execute(
+            "UPDATE tasks SET status = 'completed', progress = 100, updated_at = ? WHERE id = ?",
+            (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), task_id)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error in check new episodes thread: {e}")
+        # Mark task as failed in database
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE tasks SET status = 'failed', updated_at = ? WHERE id = ?",
+                (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), task_id)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as inner_e:
+            print(f"Could not update task status: {inner_e}")
+ 
+# ===============================
+#  [6a] Userinput validation
+# ===============================
+def validate_input(text):
+    """Sanitize user input for safer database operations"""
+    if text is None:
+        return ""
+    # Remove potentially harmful characters, limit length
+    sanitized = text.strip()
+    # Limit to reasonable length
+    return sanitized[:500]
 
 # ===============================
 #  [7] Flask Routes
@@ -372,8 +407,12 @@ def index():
 @app.route('/add', methods=['GET', 'POST'])
 def add_anime():
     if request.method == 'POST':
-        title = request.form['title']
-        search_query = request.form['search_query']
+        title = validate_input(request.form['title'])
+        search_query = validate_input(request.form['search_query'])
+        
+        if not title or not search_query:
+            return "Title and search query cannot be empty", 400
+            
         try:
             last_episode = max(0, int(request.form.get('last_episode', 0)))
         except ValueError:
@@ -382,7 +421,7 @@ def add_anime():
         download_all = 1 if 'download_all' in request.form else 0
         
         # Get schedule interval from dropdown
-        schedule_interval = request.form.get('schedule_interval', 'global')
+        schedule_interval = validate_input(request.form.get('schedule_interval', 'global'))
         
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -442,6 +481,15 @@ def edit_anime(anime_id):
 def update_anime(anime_id):
     data = request.form
     
+    # Validate input
+    title = validate_input(data.get('title', ''))
+    search_query = validate_input(data.get('search_query', ''))
+    status = validate_input(data.get('status', 'watching'))
+    schedule_interval = validate_input(data.get('schedule_interval', 'global'))
+    
+    if not title or not search_query:
+        return "Title and search query cannot be empty", 400
+    
     try:
         last_episode = max(0, int(data.get('last_episode', 0)))
     except ValueError:
@@ -451,10 +499,10 @@ def update_anime(anime_id):
     cursor = conn.cursor()
     cursor.execute(
         "UPDATE anime SET title = ?, search_query = ?, status = ?, last_episode = ?, auto_download = ?, schedule_interval = ? WHERE id = ?",
-        (data['title'], data['search_query'], data['status'], 
+        (title, search_query, status, 
          last_episode,
          1 if 'auto_download' in data else 0, 
-         data.get('schedule_interval', 'global'), 
+         schedule_interval, 
          anime_id)
     )
     conn.commit()
@@ -550,10 +598,17 @@ def task_status(anime_id):
 # ===============================
 #  [8] Template Generator 
 # ===============================
-def create_templates():
+def create_templates():    
+    print("Creating templates...")
     if not os.path.exists('templates'):
+        print("Templates directory doesn't exist, creating it")
         os.makedirs('templates')
-    # Base, index, add_anime, etc. (omitted here for brevity)
+    else:
+        print(f"Templates directory exists at {os.path.abspath('templates')}")
+    
+    # After creating a template file
+    print(f"Created template file: {os.path.abspath('templates/index.html')}")
+    # Rest of your function
 
     
     # Create base template
@@ -980,39 +1035,73 @@ document.addEventListener('DOMContentLoaded', function() {
 # ===============================
 def check_for_new_episodes():
     print("[Scheduler] Checking for new episodes...")
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM anime WHERE auto_download = 1 AND status != 'completed'")
-    anime_list = cursor.fetchall()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM anime WHERE auto_download = 1 AND status != 'completed'")
+        anime_list = cursor.fetchall()
 
-    for anime in anime_list:
-        print(f"[AutoCheck] {anime['title']}")
-        results = fetch_magnet_links(anime['search_query'])
-        # Sort results by episode number to ensure we process in order
-        results.sort(key=lambda x: x['episode'] if x['episode'] != -1 else 99999)
-        
-        # Track which episodes we've already processed
-        processed_episodes = set()
-        
-        for r in results:
-            if r['episode'] > anime['last_episode'] and r['episode'] != -1 and r['episode'] not in processed_episodes:
-                processed_episodes.add(r['episode'])  # Mark this episode as processed
-                
-                if add_torrent_to_qbittorrent(r['magnet']):
-                    cursor.execute(
-                        "INSERT INTO downloads (anime_id, episode, magnet_link, download_date) VALUES (?, ?, ?, ?)",
-                        (anime['id'], r['episode'], r['magnet'], datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                    )
-                    cursor.execute(
-                        "UPDATE anime SET last_episode = ? WHERE id = ? AND last_episode < ?",
-                        (r['episode'], anime['id'], r['episode'])
-                    )
-                    conn.commit()
-    conn.close()
-    
+        for anime in anime_list:
+            print(f"[AutoCheck] {anime['title']}")
+            results = fetch_magnet_links(anime['search_query'])
+            # Sort results by episode number to ensure we process in order
+            results.sort(key=lambda x: x['episode'] if x['episode'] != -1 else 99999)
+            
+            # Track which episodes we've already processed
+            processed_episodes = set()
+            
+            for r in results:
+                if r['episode'] > anime['last_episode'] and r['episode'] != -1 and r['episode'] not in processed_episodes:
+                    processed_episodes.add(r['episode'])  # Mark this episode as processed
+                    
+                    if add_torrent_to_qbittorrent(r['magnet']):
+                        cursor.execute(
+                            "INSERT INTO downloads (anime_id, episode, magnet_link, download_date) VALUES (?, ?, ?, ?)",
+                            (anime['id'], r['episode'], r['magnet'], datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                        )
+                        cursor.execute(
+                            "UPDATE anime SET last_episode = ? WHERE id = ? AND last_episode < ?",
+                            (r['episode'], anime['id'], r['episode'])
+                        )
+                        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error in scheduled check: {e}")
 
 def run_scheduler():
+    # Define the custom check function inside run_scheduler
+    def schedule_custom_check():
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM anime WHERE auto_download = 1 AND status != 'completed' AND schedule_interval != 'global'")
+            anime_list = cursor.fetchall()
+            
+            for anime in anime_list:
+                print(f"[CustomScheduleCheck] {anime['title']}")
+                results = fetch_magnet_links(anime['search_query'])
+                processed_episodes = set()
+                
+                for r in sorted(results, key=lambda x: x['episode'] if x['episode'] != -1 else 99999):
+                    if r['episode'] > anime['last_episode'] and r['episode'] != -1 and r['episode'] not in processed_episodes:
+                        processed_episodes.add(r['episode'])
+                        
+                        if add_torrent_to_qbittorrent(r['magnet']):
+                            cursor.execute(
+                                "INSERT INTO downloads (anime_id, episode, magnet_link, download_date) VALUES (?, ?, ?, ?)",
+                                (anime['id'], r['episode'], r['magnet'], datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                            )
+                            cursor.execute(
+                                "UPDATE anime SET last_episode = ? WHERE id = ? AND last_episode < ?",
+                                (r['episode'], anime['id'], r['episode'])
+                            )
+                            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"Error in custom schedule check: {e}")
+    
     # Configure scheduler based on environment settings for global checks
     if SCHEDULE_UNIT == 'minute':
         schedule.every(SCHEDULE_INTERVAL).minutes.do(check_for_new_episodes)
@@ -1044,5 +1133,4 @@ if __name__ == '__main__':
     check_for_new_episodes()
     
     port = int(os.environ.get('FLASK_PORT', 5000))
-    app.run(debug=True, host='0.0.0.0', port=port)
-
+    app.run(debug=False, host='0.0.0.0', port=port)
