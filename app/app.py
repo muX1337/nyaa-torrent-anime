@@ -128,9 +128,7 @@ def fetch_magnet_links(search_query, page=1):
 
             episode = -1
             for pattern in ep_patterns:
-                print(f"Trying pattern: {pattern}")
                 match = re.search(pattern, title_for_search)
-                print("title_for_search: " + title_for_search)
                 if match:
                     try:
                         # If we match SxEx, use the second group for episode number
