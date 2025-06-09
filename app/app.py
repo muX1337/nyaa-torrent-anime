@@ -531,23 +531,39 @@ def search_anime(anime_id):
     results = fetch_magnet_links(anime['search_query'], page)
     return render_template('search_results.html', anime=anime, results=results, current_page=page)
 
-@app.route('/download', methods=['POST'])
-def download_torrent():
-    data = request.json
-    magnet_link = data.get('magnet')
-    anime_id = data.get('anime_id')
-    episode = int(data.get('episode', -1))
-    if add_torrent_to_qbittorrent(magnet_link):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO downloads (anime_id, episode, magnet_link, download_date) VALUES (?, ?, ?, ?)",
-            (anime_id, episode, magnet_link, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        )
-        conn.commit()
-        conn.close()
-        return jsonify({"success": True})
-    return jsonify({"success": False})
+@app.route('/downloads')
+def view_downloads():
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    offset = (page - 1) * per_page
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # Get total number of downloads for pagination
+    cursor.execute("SELECT COUNT(*) FROM downloads")
+    total_downloads = cursor.fetchone()[0]
+    total_pages = (total_downloads + per_page - 1) // per_page
+
+    # Fetch paginated results
+    cursor.execute("""
+        SELECT d.*, a.title as anime_title 
+        FROM downloads d
+        JOIN anime a ON d.anime_id = a.id
+        ORDER BY d.download_date DESC
+        LIMIT ? OFFSET ?
+    """, (per_page, offset))
+    downloads = cursor.fetchall()
+    conn.close()
+
+    return render_template(
+        'downloads.html', 
+        downloads=downloads, 
+        current_page=page, 
+        total_pages=total_pages
+    )
+
 
 @app.route('/download-status/<int:anime_id>')
 def download_status(anime_id):
@@ -998,34 +1014,66 @@ document.addEventListener('DOMContentLoaded', function() {
     with open('templates/downloads.html', 'w') as f:
         f.write('''{% extends "base.html" %}
 {% block content %}
-    <h2>Download History</h2>
-    
-    {% if downloads %}
-        <div class="table-responsive">
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Anime</th>
-                        <th>Episode</th>
-                        <th>Download Date</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for download in downloads %}
-                    <tr>
-                        <td>{{ download.anime_title }}</td>
-                        <td>{{ download.episode if download.episode != -1 else "N/A" }}</td>
-                        <td>{{ download.download_date }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    {% else %}
-        <div class="alert alert-info">
-            No downloads in history yet.
-        </div>
-    {% endif %}
+<h2>Downloaded Episodes</h2>
+
+{% if downloads %}
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Anime</th>
+                    <th>Episode</th>
+                    <th>Magnet Link</th>
+                    <th>Download Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in downloads %}
+                <tr>
+                    <td>{{ d.anime_title }}</td>
+                    <td>{{ d.episode }}</td>
+                    <td><a href="{{ d.magnet_link }}" target="_blank">Magnet</a></td>
+                    <td>{{ d.download_date }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination Controls -->
+    <nav aria-label="Page navigation">
+      <ul class="pagination justify-content-center">
+        {% if current_page > 1 %}
+        <li class="page-item">
+          <a class="page-link" href="{{ url_for('view_downloads', page=current_page-1) }}">Previous</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+          <span class="page-link">Previous</span>
+        </li>
+        {% endif %}
+
+        {% for page_num in range(1, total_pages + 1) %}
+        <li class="page-item {% if page_num == current_page %}active{% endif %}">
+          <a class="page-link" href="{{ url_for('view_downloads', page=page_num) }}">{{ page_num }}</a>
+        </li>
+        {% endfor %}
+
+        {% if current_page < total_pages %}
+        <li class="page-item">
+          <a class="page-link" href="{{ url_for('view_downloads', page=current_page+1) }}">Next</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+          <span class="page-link">Next</span>
+        </li>
+        {% endif %}
+      </ul>
+    </nav>
+
+{% else %}
+    <div class="alert alert-info">No downloads found.</div>
+{% endif %}
 {% endblock %}''')
 
 # ===============================
