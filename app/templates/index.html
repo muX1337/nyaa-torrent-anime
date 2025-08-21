@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>My Anime List</h2>
+    
+    {% if anime_list %}
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Status</th>
+                        <th>Last Episode</th>
+                        <th>Auto Download</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for anime in anime_list %}
+                    <tr>
+                        <td>{{ anime.title }}</td>
+                        <td>{{ anime.status }}</td>
+                        <td>{{ anime.last_episode }}</td>
+                        <td>{{ "Yes" if anime.auto_download else "No" }}</td>
+                        <td>
+                            <a href="/edit/{{ anime.id }}" class="btn btn-sm btn-primary">Edit</a>
+                            <a href="/search/{{ anime.id }}" class="btn btn-sm btn-info">Search</a>
+                            <a href="/delete/{{ anime.id }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure?')">Delete</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            No anime in your watchlist. <a href="/add">Add one now</a>!
+        </div>
+    {% endif %}
+{% endblock %}

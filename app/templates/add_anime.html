@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>Add New Anime</h2>
+    
+    <form method="post" class="mb-4">
+        <div class="mb-3">
+            <label for="title" class="form-label">Anime Title</label>
+            <input type="text" class="form-control" id="title" name="title" required>
+        </div>
+        
+        <div class="mb-3">
+            <label for="search_query" class="form-label">Search Query</label>
+            <input type="text" class="form-control" id="search_query" name="search_query" required>
+            <div class="form-text">This will be used to search for episodes on Nyaa.si</div>
+        </div>
+        
+        <div class="mb-3">
+            <label for="last_episode" class="form-label">Start downloading at Episode</label>
+            <input type="number" class="form-control" id="last_episode" name="last_episode" value="0" min="0">
+            <div class="form-text">If you've already watched some episodes, enter the last episode number you've seen here. The system will only download episodes after this number.</div>
+        </div>
+        
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="auto_download" name="auto_download" checked>
+            <label class="form-check-label" for="auto_download">Enable auto-download for new episodes</label>
+        </div>
+        
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="download_all" name="download_all">
+            <label class="form-check-label" for="download_all">Download all existing episodes now</label>
+        </div>
+        
+        <div class="mb-3">
+            <label for="schedule_interval" class="form-label">Check Interval</label>
+            <select class="form-select" id="schedule_interval" name="schedule_interval">
+                <option value="global">Global Setting (Default)</option>
+                <option value="15min">Every 15 minutes</option>
+                <option value="30min">Every 30 minutes</option>
+                <option value="45min">Every 45 minutes</option>
+                <option value="1h">Every 1 hour</option>
+                <option value="2h">Every 2 hours</option>
+                <option value="5h">Every 5 hours</option>
+            </select>
+            <div class="form-text">How often to check for new episodes</div>
+        </div>
+        
+        <button type="submit" class="btn btn-success">Add Anime</button>
+        <a href="/" class="btn btn-secondary">Cancel</a>
+    </form>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>Edit Anime</h2>
+    
+    <form method="post" action="/update/{{ anime.id }}" class="mb-4">
+        <div class="mb-3">
+            <label for="title" class="form-label">Anime Title</label>
+            <input type="text" class="form-control" id="title" name="title" value="{{ anime.title }}" required>
+        </div>
+        
+        <div class="mb-3">
+            <label for="search_query" class="form-label">Search Query</label>
+            <input type="text" class="form-control" id="search_query" name="search_query" value="{{ anime.search_query }}" required>
+        </div>
+        
+        <div class="mb-3">
+            <label for="last_episode" class="form-label">Last Episode Downloaded</label>
+            <input type="number" class="form-control" id="last_episode" name="last_episode" value="{{ anime.last_episode }}" min="0">
+            <div class="form-text">Set this to your current episode progress. The system will only download episodes after this number.</div>
+        </div>
+        
+        <div class="mb-3">
+            <label for="status" class="form-label">Status</label>
+            <select class="form-select" id="status" name="status">
+                <option value="watching" {% if anime.status == 'watching' %}selected{% endif %}>Watching</option>
+                <option value="completed" {% if anime.status == 'completed' %}selected{% endif %}>Completed</option>
+                <option value="on_hold" {% if anime.status == 'on_hold' %}selected{% endif %}>On Hold</option>
+                <option value="dropped" {% if anime.status == 'dropped' %}selected{% endif %}>Dropped</option>
+                <option value="plan_to_watch" {% if anime.status == 'plan_to_watch' %}selected{% endif %}>Plan to Watch</option>
+            </select>
+        </div>
+        
+        <div class="mb-3 form-check">
+            <input type="checkbox" class="form-check-input" id="auto_download" name="auto_download" {% if anime.auto_download %}checked{% endif %}>
+            <label class="form-check-label" for="auto_download">Enable auto-download for new episodes</label>
+        </div>
+        
+        <div class="mb-3">
+            <label for="schedule_interval" class="form-label">Check Interval</label>
+            <select class="form-select" id="schedule_interval" name="schedule_interval">
+                <option value="global" {% if anime.schedule_interval == 'global' %}selected{% endif %}>Global Setting (Default)</option>
+                <option value="15min" {% if anime.schedule_interval == '15min' %}selected{% endif %}>Every 15 minutes</option>
+                <option value="30min" {% if anime.schedule_interval == '30min' %}selected{% endif %}>Every 30 minutes</option>
+                <option value="45min" {% if anime.schedule_interval == '45min' %}selected{% endif %}>Every 45 minutes</option>
+                <option value="1h" {% if anime.schedule_interval == '1h' %}selected{% endif %}>Every 1 hour</option>
+                <option value="2h" {% if anime.schedule_interval == '2h' %}selected{% endif %}>Every 2 hours</option>
+                <option value="5h" {% if anime.schedule_interval == '5h' %}selected{% endif %}>Every 5 hours</option>
+            </select>
+            <div class="form-text">How often to check for new episodes</div>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Update</button>
+        <a href="/" class="btn btn-secondary">Cancel</a>
+    </form>
+{% endblock %}

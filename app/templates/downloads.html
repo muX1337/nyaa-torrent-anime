@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>Download History</h2>
+    
+    {% if downloads %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Anime</th>
+                        <th>Episode</th>
+                        <th>Download Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for download in downloads %}
+                    <tr>
+                        <td>{{ download.anime_title }}</td>
+                        <td>{{ download.episode if download.episode != -1 else "N/A" }}</td>
+                        <td>{{ download.download_date }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            No downloads in history yet.
+        </div>
+    {% endif %}
+{% endblock %}

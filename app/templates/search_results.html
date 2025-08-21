@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+    <h2>Search Results for "{{ anime.title }}"</h2>
+    
+    <div class="mb-3">
+        <a href="/" class="btn btn-secondary">Back to List</a>
+        <a href="/search/{{ anime.id }}?page={{ current_page + 1 }}" class="btn btn-outline-primary">Next Page</a>
+    </div>
+    
+    {% if results %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Episode</th>
+                        <th>Size</th>
+                        <th>Date</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in results %}
+                    <tr>
+                        <td>{{ result.title }}</td>
+                        <td>{{ result.episode if result.episode != -1 else "N/A" }}</td>
+                        <td>{{ result.size }}</td>
+                        <td>{{ result.date }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-success download-btn" 
+                                    data-magnet="{{ result.magnet }}"
+                                    data-anime-id="{{ anime.id }}"
+                                    data-episode="{{ result.episode }}">
+                                Download
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-warning">
+            No results found. Try refining your search query.
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const downloadButtons = document.querySelectorAll('.download-btn');
+    
+    downloadButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const magnetLink = this.getAttribute('data-magnet');
+            const animeId = this.getAttribute('data-anime-id');
+            const episode = this.getAttribute('data-episode');
+            
+            // Button UI feedback
+            const originalText = this.textContent;
+            this.textContent = 'Adding...';
+            this.disabled = true;
+            
+            // Send AJAX request
+            fetch('/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    magnet: magnetLink,
+                    anime_id: animeId,
+                    episode: episode
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    this.textContent = 'Added!';
+                    this.classList.remove('btn-success');
+                    this.classList.add('btn-outline-success');
+                } else {
+                    this.textContent = 'Failed';
+                    this.classList.remove('btn-success');
+                    this.classList.add('btn-danger');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                this.textContent = 'Error';
+                this.classList.remove('btn-success');
+                this.classList.add('btn-danger');
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

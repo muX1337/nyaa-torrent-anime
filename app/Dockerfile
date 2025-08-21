@@ -1,24 +1,24 @@
+# Dockerfile
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install dependencies
+# System deps (optional but handy for debugging)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application files
-COPY app.py .
-COPY templates/ templates/
-
-# Create data directory
-RUN mkdir -p data
-
-# Set environment variables
-ENV FLASK_APP=app.py
-ENV PYTHONUNBUFFERED=1
+# App code
+COPY . .
+COPY templates/ /app/templates/
 
 # Expose port
 EXPOSE 5000
 
-# Run the application
-CMD ["python", "app.py"]
+# Start with Gunicorn: 4 workers, each 8 threads (tweak to taste)
+# "--timeout 120" prevents workers from being killed too quickly on slow upstreams
+CMD ["gunicorn", "-w", "4", "-k", "gthread", "--threads", "8", "--timeout", "120", "--graceful-timeout", "30", "-b", "0.0.0.0:5000", "app:app"]
