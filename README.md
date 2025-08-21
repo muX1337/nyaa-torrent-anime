@@ -39,6 +39,16 @@ You can use [TorGuard](https://torguard.net/checkmytorrentipaddress.php) to chec
 > Customize queries for better results. Specify Realease-Groups like [ASW],[Erai-raws],.. or video resolution like 1080p
 > For example: [Erai-raws] Saikyou no Ousama, Nidome no Jinsei wa Nani o Suru? 1080p 
 
+# Updating
+
+Lately most of the changes only affecting the flask app with these commands the only the service can be updated, e.g. 
+
+'''
+docker compose -f docker-compose.yml down anime_watchlist
+docker compose -f docker-compose.yml build anime_watchlist
+docker compose -f docker-compose.yml up -d anime_watchlist
+'''
+
 
 ## Known Issues
 
