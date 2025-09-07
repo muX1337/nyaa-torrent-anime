@@ -573,6 +573,35 @@ def view_downloads():
         current_page=page,
         total_pages=total_pages
     )
+    
+@app.route('/download', methods=['POST'])
+def download():
+    data = request.get_json()
+    magnet = data.get('magnet')
+    anime_id = data.get('anime_id')
+    episode = data.get('episode')
+
+    if not magnet:
+        return jsonify({'success': False, 'error': 'No magnet link provided'}), 400
+
+    try:
+        success = add_torrent_to_qbittorrent(magnet)
+        if success:
+            # log into DB if you want
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO downloads (anime_id, episode, magnet_link, download_date) VALUES (?, ?, ?, ?)",
+                (anime_id, episode, magnet, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            )
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Failed to add torrent'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/download-status/<int:anime_id>')
 def download_status(anime_id):
